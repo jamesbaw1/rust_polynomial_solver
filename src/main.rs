@@ -10,7 +10,7 @@ fn start_points(coefficients: &[Complex<f64>]) -> Vec<Complex<f64>> {
         .rev()
         .find(|&n| n.norm() != 0.0)
         .unwrap();
-    let radius = (coefficients[0] / last_non_zero.powf(1.0 / degree)).norm();
+    let radius = coefficients[0] / last_non_zero.powf(1.0 / degree);
 
     (0..degree as i64)
         .map(|n| 2.0 * PI * n as f64 / degree + PI / 2.0 * degree)
