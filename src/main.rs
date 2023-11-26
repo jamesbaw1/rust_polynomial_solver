@@ -62,12 +62,12 @@ fn aberth_ehrlich(coefficients: Vec<Complex<f64>>) -> Vec<Complex<f64>> {
 
             let quotient = dividend / divisor;
 
-            let sigma: Complex<f64> = current_guesses
+            let summation = current_guesses
                 .iter()
                 .filter(|&j| *j != k)
                 .fold(Complex::default(), |accumulator, &j| accumulator + 1.0 / (k - j));
 
-            let kth_guess: Complex<f64> = quotient / (1.0 - quotient * sigma);
+            let kth_guess = quotient / (1.0 - quotient * summation);
             new_guesses.push(kth_guess);
         }
 
@@ -87,7 +87,7 @@ fn aberth_ehrlich(coefficients: Vec<Complex<f64>>) -> Vec<Complex<f64>> {
 fn main() {
     let coefficients = vec![1, 2, 3, 4];
 
-    let coefficients_complex: Vec<Complex<f64>> =
+    let coefficients_complex =
         coefficients.iter().map(|&a| Complex::new(a as f64, 0.0)).collect();
 
     let start_time = Instant::now();
