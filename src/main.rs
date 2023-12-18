@@ -1,100 +1,109 @@
 use num_complex::Complex;
-use std::f64::consts::PI;
-use std::time::Instant;
 
+#[derive(Debug)]
+struct Polynomial(Vec<Complex<f64>>);
 
-fn start_points(coefficients: &[Complex<f64>]) -> Vec<Complex<f64>> {
-    let degree = coefficients.len() as f64 - 1.0;
-    let last_non_zero = coefficients
-        .iter()
-        .rev()
-        .find(|&n| n.norm() != 0.0)
-        .unwrap();
-    let radius = coefficients[0] / last_non_zero.powf(1.0 / degree);
+impl std::ops::Deref for Polynomial {
+    type Target = Vec<Complex<f64>>;
 
-    (0..degree as i64)
-        .map(|n| 2.0 * PI * n as f64 / degree + PI / 2.0 * degree)
-        .map(|arg| Complex::new(arg.cos(), arg.sin()) * radius)
-        .collect()
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-
-fn differentiate(coefficients: &[Complex<f64>]) -> Vec<Complex<f64>> {
-    let degree = coefficients.len() as f64 - 1.0;
-
-    coefficients
-        .iter()
-        .enumerate()
-        .map(|(i, &coeff)| coeff * (degree - i as f64))
-        .collect()
-}
-
-
-fn aberth_ehrlich(coefficients: Vec<Complex<f64>>) -> Vec<Complex<f64>> {
-    let degree = coefficients.len() as f64 - 1.0;
-    let derivative = differentiate(&coefficients);
-    let mut current_guesses = start_points(&coefficients);
-    let mut old_guesses: Vec<Complex<f64>> = vec![Complex::default(); degree as usize - 1];
-    let mut iteration_count = 0;
-
-    while old_guesses
-        .iter()
-        .zip(current_guesses.iter())
-        .any(|(&old_guess, &current_guess)| (old_guess - current_guess).norm() > 0.000001)
-    {
-        iteration_count += 1;
-        let mut new_guesses: Vec<Complex<f64>> = Default::default();
-
-        for &k in &current_guesses {
-            let dividend: Complex<f64> = coefficients
-                .iter()
-                .enumerate()
-                .fold(Complex::default(), |accumulator, (i, &coeff)| {
-                    accumulator + coeff * k.powc(Complex::new(degree - i as f64, 0.0))
-                });
-
-            let divisor: Complex<f64> = derivative
-                .iter()
-                .enumerate()
-                .fold(Complex::default(), |accumulator, (i, &coeff)| {
-                    accumulator + coeff * k.powc(Complex::new(degree - 1.0 - i as f64, 0.0))
-                });
-
-            let quotient = dividend / divisor;
-
-            let summation = current_guesses
-                .iter()
-                .filter(|&j| *j != k)
-                .fold(Complex::default(), |accumulator, &j| accumulator + 1.0 / (k - j));
-
-            let kth_guess = quotient / (1.0 - quotient * summation);
-            new_guesses.push(kth_guess);
-        }
-
-        old_guesses = current_guesses.clone();
-        current_guesses = current_guesses
+impl std::ops::SubAssign for Polynomial {
+    fn sub_assign(&mut self, rhs: Self) {
+        assert_eq!(self.len(), rhs.len());
+        *self = Self(
+            self
             .iter()
-            .zip(new_guesses.iter())
-            .map(|(&i, &new_guess)| i - new_guess)
-            .collect();
+            .zip(rhs.iter())
+            .map(|(a, b)| a - b)
+            .collect()
+        )
+    }
+}
+
+impl Polynomial {
+    fn from<T>(coefficients: Vec<T>) -> Self
+    where T: Into<f64> {
+        Polynomial(
+            coefficients
+            .into_iter()
+            .map(|a| Complex::from(a.into()))
+            .collect()
+        )
     }
 
-    println!("DEBUG {} iter", iteration_count);
-    current_guesses
+    fn derivative(&self) -> Self {
+        Polynomial(
+            self
+            .iter()
+            .enumerate()
+            .map(|(n, a)| (n as f64) * a)
+            .skip(1)
+            .collect()
+        )
+    }
+
+    fn start_points(&self) -> Self {
+        let pi = std::f64::consts::PI;
+        let degree = (self.len() - 1) as f64;
+
+        let radius =
+        (self.last().unwrap() /
+            self
+            .iter()
+            .find(|&a| a.norm() != 0.0)
+            .unwrap()
+        )
+        .norm()
+        .powf(1.0 / degree);
+
+        Polynomial(
+            (0..degree as usize)
+            .map(|n| 2.0 * pi * n as f64 / degree + pi / 2.0 * degree)
+            .map(|arg| Complex::new(arg.cos(), arg.sin()) * radius)
+            .collect()
+        )
+    }
+
+    fn eval(&self, x: Complex<f64>) -> Complex<f64> {
+        self
+        .iter()
+        .rev()
+        .fold(Complex::default(), |acc, a| a + x * acc)
+    }
+
+    fn solve(&self) -> Self {
+        let mut current_guesses = self.start_points();
+        let mut ratio = Complex::default();
+        let derivative = self.derivative();
+
+        loop {
+            current_guesses -=
+            Polynomial(
+                current_guesses
+                .iter()
+                .map(|&k| {
+                    ratio = self.eval(k) / derivative.eval(k);
+                    ratio / (1.0 - ratio *
+                        current_guesses
+                        .iter()
+                        .filter(|&j| *j != k)
+                        .fold(Complex::default(), |acc, &j| acc + 1.0 / (k - j))
+                    )
+                }).collect()
+            );
+
+            if ratio.norm() <= 0.0001 { break; }
+        }
+
+        current_guesses
+    }
 }
 
-
 fn main() {
-    let coefficients = vec![1, 2, 3, 4];
-
-    let coefficients_complex =
-        coefficients.iter().map(|&a| Complex::new(a as f64, 0.0)).collect();
-
-    let start_time = Instant::now();
-    let result = aberth_ehrlich(coefficients_complex);
-    let end_time = Instant::now();
-
-    let elapsed_time = end_time - start_time;
-
-    println!("DEBUG {:.2?}\n{:.5?}", elapsed_time, result);
+    let polynomial = Polynomial::from(vec![/*coefficients go here*/]);
+    println!("{:#.5?}", polynomial.solve());
 }
